@@ -30,3 +30,16 @@ PENDING -> REJECTED
 - Multi-stage approval chains
 - Role-based access control
 - Docker deployment
+
+## Architecture
+
+See ARCHITECTURE.md
+
+## Roadmap
+
+- PostgreSQL integration
+- Audit logging
+- Multi-stage approval chains
+- AI-powered approval routing
+- Docker deployment
+- CI/CD pipelines
