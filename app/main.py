@@ -80,3 +80,6 @@ def get_workflow(workflow_id: int):
     return workflows[workflow_id]
 
 
+@app.get("/workflows")
+def list_workflows():
+    return list(workflows.values())
