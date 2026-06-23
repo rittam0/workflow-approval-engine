@@ -1,85 +1,23 @@
-from enum import Enum
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+"""Application entrypoint."""
 
-app = FastAPI()
+from fastapi import FastAPI
 
+from app.database import Base, engine
+from app.routers import workflows
 
-class WorkflowState(str, Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
+# Create tables on startup (Alembic handles this in production;
+# this line makes local dev and tests work without running migrations)
+Base.metadata.create_all(bind=engine)
 
+app = FastAPI(
+    title="Workflow Approval Engine",
+    description="State-machine-driven approval workflows with atomic audit logging.",
+    version="1.0.0",
+)
 
-class Workflow(BaseModel):
-    id: int
-    title: str
-    state: WorkflowState
-
-
-workflows = {}
-next_id = 1
+app.include_router(workflows.router)
 
 
-@app.get("/")
+@app.get("/health")
 def health():
     return {"status": "ok"}
-
-
-@app.post("/workflow")
-def create_workflow(title: str):
-    global next_id
-
-    workflow = Workflow(
-        id=next_id,
-        title=title,
-        state=WorkflowState.PENDING
-    )
-
-    workflows[next_id] = workflow
-    next_id += 1
-
-    return workflow
-
-
-@app.post("/approve/{workflow_id}")
-def approve_workflow(workflow_id: int):
-    if workflow_id not in workflows:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    workflow = workflows[workflow_id]
-
-    if workflow.state != WorkflowState.PENDING:
-        raise HTTPException(status_code=400, detail="Invalid transition")
-
-    workflow.state = WorkflowState.APPROVED
-
-    return workflow
-
-
-@app.post("/reject/{workflow_id}")
-def reject_workflow(workflow_id: int):
-    if workflow_id not in workflows:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    workflow = workflows[workflow_id]
-
-    if workflow.state != WorkflowState.PENDING:
-        raise HTTPException(status_code=400, detail="Invalid transition")
-
-    workflow.state = WorkflowState.REJECTED
-
-    return workflow
-
-
-@app.get("/workflow/{workflow_id}")
-def get_workflow(workflow_id: int):
-    if workflow_id not in workflows:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
-    return workflows[workflow_id]
-
-
-@app.get("/workflows")
-def list_workflows():
-    return list(workflows.values())
