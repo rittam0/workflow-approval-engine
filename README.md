@@ -199,3 +199,7 @@ npm run dev
 - Database schema is created on startup with SQLAlchemy metadata; production migrations such as Alembic are not included.
 - Benchmarks were collected on a local Docker Desktop environment, so absolute latency will vary by machine.
 - Benchmark runs create durable PostgreSQL records unless the database volume is reset.
+
+## Failure Mode Validation
+
+Failure mode tested: requests for nonexistent workflow IDs return HTTP 404 instead of silently succeeding or corrupting workflow state. The test suite covers this failure path alongside successful workflow creation, approval, filtering, and audit-log validation.
