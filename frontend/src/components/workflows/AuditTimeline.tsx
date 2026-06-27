@@ -21,9 +21,9 @@ export function AuditTimeline({ entries }: AuditTimelineProps) {
         >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium text-slate-900">{entry.actor_id}</span>
-            <span className="text-sm text-slate-500">•</span>
+            <span className="text-sm text-slate-500">/</span>
             <span className="text-sm text-slate-600">
-              {entry.from_state} → {entry.to_state}
+              {entry.from_state} to {entry.to_state}
             </span>
           </div>
           {entry.reason && (

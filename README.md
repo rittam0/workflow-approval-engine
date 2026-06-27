@@ -1,79 +1,190 @@
 # Workflow Approval Engine
 
-Full-stack workflow orchestration application with a FastAPI backend, PostgreSQL persistence, and a Next.js dashboard.
+Full-stack approval workflow application with a FastAPI backend, PostgreSQL persistence, and a Next.js/React frontend.
 
-## Features
+## Resume Highlights
 
-- Create approval workflows
-- Approve or reject pending workflows
-- State-machine driven transitions (`PENDING` → `APPROVED` or `REJECTED`)
-- Atomic audit logging for every state change
-- Dashboard with status badges and audit history
-- REST API with interactive Swagger docs
-- Docker Compose for local full-stack development
-- GitHub Actions CI for backend tests and frontend build
+- Built a production-runnable workflow approval system with FastAPI, SQLAlchemy, PostgreSQL, Next.js, React, TypeScript, and Docker Compose.
+- Implemented state-machine workflow transitions for `PENDING` to `APPROVED` or `REJECTED`, with invalid transitions rejected by the API.
+- Persisted workflow state and audit history in PostgreSQL, including atomic audit log writes for create, approve, and reject actions.
+- Shipped a Docker Compose stack for API, frontend, and database services with health checks and configurable ports.
+- Added GitHub Actions CI for backend tests and frontend lint/build checks.
+- Benchmarked 120 complete workflow lifecycles with 12-way concurrency: 10.65 requests/sec, 0.00% error rate, p50 lifecycle latency 3,220.55 ms, p95 lifecycle latency 4,700.49 ms.
+
+## Quick Start
+
+Run the full stack:
+
+```bash
+docker compose up -d --build
+```
+
+Default service URLs:
+
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:3000 |
+| API | http://localhost:8000 |
+| API docs | http://localhost:8000/docs |
+| PostgreSQL | localhost:5432 |
+
+If local ports are already in use:
+
+```bash
+API_PORT=18080 FRONTEND_PORT=13000 POSTGRES_PORT=15432 \
+NEXT_PUBLIC_API_URL=http://localhost:18080 \
+docker compose up -d --build
+```
+
+Alternate URLs used during verification:
+
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:13000 |
+| API | http://localhost:18080 |
+| PostgreSQL | localhost:15432 |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    User["Browser user"] --> Frontend["Next.js / React frontend"]
+    Frontend --> API["FastAPI API"]
+    API --> DB[("PostgreSQL")]
+    API --> Audit["Audit log writes"]
+    Audit --> DB
+```
 
 ## Tech Stack
 
 | Layer | Technologies |
-|-------|--------------|
-| Backend | Python, FastAPI, SQLAlchemy, Pydantic |
+| --- | --- |
+| Backend | Python, FastAPI, SQLAlchemy, Pydantic, Uvicorn |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
 | Database | PostgreSQL |
-| Frontend | Next.js, TypeScript, Tailwind CSS |
-| Infrastructure | Docker, Docker Compose, GitHub Actions |
+| Infrastructure | Docker, Docker Compose |
+| CI | GitHub Actions |
+| Testing | pytest, FastAPI TestClient |
 
-## Architecture
+## Workflow Model
 
-```
-Browser → Next.js (port 3000) → FastAPI (port 8000) → PostgreSQL (port 5432)
-```
+Allowed state transitions:
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for more detail.
-
-## Workflow States
-
-```
-PENDING → APPROVED
-PENDING → REJECTED
+```text
+PENDING -> APPROVED
+PENDING -> REJECTED
 ```
 
-All other transitions are rejected by the state machine.
+Every workflow create and transition writes an audit log entry. Invalid transitions return an error instead of changing state.
 
-## Quick Start (Docker)
+## API Endpoints
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Health check |
+| `POST` | `/workflows` | Create workflow |
+| `GET` | `/workflows` | List workflows, optionally filtered by `state` |
+| `GET` | `/workflows/{id}` | Workflow detail with audit history |
+| `POST` | `/workflows/{id}/approve` | Approve pending workflow |
+| `POST` | `/workflows/{id}/reject` | Reject pending workflow |
+
+## Testing
+
+Run backend tests:
 
 ```bash
-docker compose up --build
+python -m pytest tests -v
 ```
 
-Services:
+Previously verified result:
 
-- Frontend dashboard: http://localhost:3000
-- API: http://localhost:8000
-- Swagger docs: http://localhost:8000/docs
-- PostgreSQL: localhost:5432
+```text
+13 passed
+```
+
+Run frontend checks:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+GitHub Actions runs backend tests plus frontend lint/build on push and pull request.
+
+## Benchmarks
+
+Benchmark tooling:
+
+```bash
+python scripts/benchmark_api.py --base-url http://localhost:18080 --workflows 120 --concurrency 12 --warmup 12
+```
+
+Docker-network benchmark command:
+
+```bash
+docker run --rm \
+  --network workflow-approval-engine_default \
+  -v "$PWD:/workspace" \
+  -w /workspace \
+  python:3.10-slim \
+  python scripts/benchmark_api.py \
+    --base-url http://app:8000 \
+    --workflows 120 \
+    --concurrency 12 \
+    --warmup 12
+```
+
+Measured results are stored in [docs/metrics.md](docs/metrics.md).
+
+| Metric | Result |
+| --- | ---: |
+| Cold start to healthy API | 17,496.36 ms |
+| Steady-state throughput | 10.65 requests/sec |
+| Error rate | 0.00% |
+| All-request p50 latency | 1,013.51 ms |
+| All-request p95 latency | 1,929.93 ms |
+| Workflow creation p50 latency | 1,089.74 ms |
+| Workflow approval p50 latency | 1,061.46 ms |
+| Complete lifecycle p50 latency | 3,220.55 ms |
+| Complete lifecycle p95 latency | 4,700.49 ms |
+
+## Deployment
+
+The project is deployable as Docker containers:
+
+- `app`: FastAPI API service
+- `frontend`: Next.js frontend service
+- `db`: PostgreSQL service
+
+Configuration is environment-driven. See [.env.example](.env.example) for database URL, CORS origins, public frontend API URL, internal Docker API URL, and port overrides.
+
+No Kubernetes manifests are included in this repository.
+
+## Demo / Screenshots
+
+The running demo exposes:
+
+- Dashboard and workflow list at the frontend URL.
+- Workflow creation form.
+- Workflow detail page with approve/reject actions.
+- Audit history for create and transition events.
+- Swagger API documentation at `/docs`.
+
+Screenshots are not committed yet.
 
 ## Local Development
 
-### Prerequisites
-
-- Python 3.10+
-- Node.js 20+
-- PostgreSQL 14+ (or use Docker for the database only)
-
-### Backend
+Backend:
 
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/workflows
-export CORS_ORIGINS=http://localhost:3000
-
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
@@ -82,55 +193,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+## Known Limitations
 
-### Environment Variables
-
-| Variable | Service | Default | Description |
-|----------|---------|---------|-------------|
-| `DATABASE_URL` | Backend | `postgresql://postgres:postgres@localhost:5432/workflows` | PostgreSQL connection string |
-| `CORS_ORIGINS` | Backend | `http://localhost:3000` | Comma-separated allowed frontend origins |
-| `NEXT_PUBLIC_API_URL` | Frontend | `http://localhost:8000` | FastAPI base URL |
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `POST` | `/workflows` | Create workflow |
-| `GET` | `/workflows` | List workflows (optional `?state=PENDING`) |
-| `GET` | `/workflows/{id}` | Workflow detail with audit log |
-| `POST` | `/workflows/{id}/approve` | Approve pending workflow |
-| `POST` | `/workflows/{id}/reject` | Reject pending workflow |
-
-## Testing
-
-### Backend
-
-```bash
-python -m pytest tests -v
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
-
-## Frontend Usage
-
-1. Set **Acting as** in the header to identify the current user (stored in browser local storage).
-2. Create a workflow from **New Workflow**.
-3. Open a workflow detail page to approve or reject it.
-4. Review the audit timeline for a complete history of state changes.
-
-Authentication is not implemented in this portfolio version. The UI sends `owner_id` and `actor_id` values to the API as plain strings.
-
-## Roadmap
-
-- Multi-stage approval chains
-- Role-based access control
-- Email / Slack notifications
-- AI-powered approval routing
+- Authentication and authorization are intentionally not implemented; the portfolio UI sends `owner_id` and `actor_id` as plain strings.
+- Database schema is created on startup with SQLAlchemy metadata; production migrations such as Alembic are not included.
+- Benchmarks were collected on a local Docker Desktop environment, so absolute latency will vary by machine.
+- Benchmark runs create durable PostgreSQL records unless the database volume is reset.

@@ -29,7 +29,7 @@ export default async function WorkflowDetailPage({ params }: WorkflowDetailPageP
     <div className="space-y-8">
       <div>
         <Link href="/" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-          ← Back to workflows
+          Back to workflows
         </Link>
         <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
           <div>

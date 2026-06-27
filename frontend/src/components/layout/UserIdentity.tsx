@@ -19,7 +19,7 @@ export function UserIdentity() {
       value={userId}
       onChange={(event) => setUserId(event.target.value)}
       placeholder="Enter user ID"
-      className="w-48"
+      className="w-full sm:w-48"
     />
   );
 }

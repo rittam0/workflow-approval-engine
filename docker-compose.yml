@@ -1,37 +1,53 @@
 services:
   db:
     image: postgres:14
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: workflows
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-workflows}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d workflows"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-workflows}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   app:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/workflows
-      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/workflows}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      API_INTERNAL_URL: http://app:8000
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:
