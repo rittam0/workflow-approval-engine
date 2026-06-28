@@ -1,15 +1,15 @@
 # Workflow Approval Engine
 
-Full-stack approval workflow application with a FastAPI backend, PostgreSQL persistence, and a Next.js/React frontend.
+Production-style end-to-end workflow approval platform built with FastAPI, PostgreSQL, Next.js, Docker, Prometheus, and Grafana. The application enforces workflow state transitions using a finite-state machine (FSM), maintains a transactional audit trail, and exposes production-style observability through Prometheus metrics and Grafana dashboards.
 
 ## Resume Highlights
 
-- Built a production-runnable workflow approval system with FastAPI, SQLAlchemy, PostgreSQL, Next.js, React, TypeScript, and Docker Compose.
-- Implemented state-machine workflow transitions for `PENDING` to `APPROVED` or `REJECTED`, with invalid transitions rejected by the API.
-- Persisted workflow state and audit history in PostgreSQL, including atomic audit log writes for create, approve, and reject actions.
-- Shipped a Docker Compose stack for API, frontend, and database services with health checks and configurable ports.
-- Added GitHub Actions CI for backend tests and frontend lint/build checks.
-- Benchmarked 120 complete workflow lifecycles with 12-way concurrency: 10.65 requests/sec, 0.00% error rate, p50 lifecycle latency 3,220.55 ms, p95 lifecycle latency 4,700.49 ms.
+- Built a production-style end-to-end workflow approval platform using FastAPI, PostgreSQL, Next.js, React, TypeScript, Docker Compose, Prometheus, and Grafana.
+- Implemented a finite-state machine (FSM) to enforce legal workflow transitions with HTTP 409 responses for invalid state changes.
+- Guaranteed transactional consistency by writing workflow state updates and audit logs atomically within a single database transaction.
+- Instrumented the application with Prometheus business metrics and Grafana dashboards for workflow creation, state transitions, latency, throughput, and process metrics.
+- Benchmarked concurrent workflow lifecycles using a custom asynchronous benchmarking tool and documented throughput, latency, and error-rate characteristics.
+- Configured GitHub Actions CI for backend testing and frontend lint/build validation.
 
 ## Quick Start
 
@@ -65,6 +65,7 @@ flowchart LR
 | Infrastructure | Docker, Docker Compose |
 | CI | GitHub Actions |
 | Testing | pytest, FastAPI TestClient |
+| Observability | Prometheus, Grafana |
 
 ## Workflow Model
 
@@ -149,6 +150,26 @@ Measured results are stored in [docs/metrics.md](docs/metrics.md).
 | Complete lifecycle p50 latency | 3,220.55 ms |
 | Complete lifecycle p95 latency | 4,700.49 ms |
 
+## Observability
+
+Business metrics exposed through /metrics:
+
+- workflow_created_total
+- workflow_transition_total
+- workflow_invalid_transition_total
+
+Infrastructure metrics:
+
+- HTTP request throughput
+- HTTP request latency
+- Memory usage
+- Open file descriptors
+
+| Service | URL |
+| --- | --- |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 |
+
 ## Deployment
 
 The project is deployable as Docker containers:
@@ -171,7 +192,13 @@ The running demo exposes:
 - Audit history for create and transition events.
 - Swagger API documentation at `/docs`.
 
-Screenshots are not committed yet.
+Screenshots to include:
+
+- Frontend dashboard
+- Workflow detail page
+- Swagger API documentation
+- Prometheus metrics
+- Grafana observability dashboard
 
 ## Local Development
 

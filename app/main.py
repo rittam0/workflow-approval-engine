@@ -11,6 +11,7 @@ from app.routers import workflows
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
+
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -22,6 +23,7 @@ CORS_ORIGINS = [
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     yield
+
 
 app = FastAPI(
     title="Workflow Approval Engine",

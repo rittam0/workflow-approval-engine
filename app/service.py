@@ -10,7 +10,6 @@ from app.metrics import (
 )
 from app.models import AuditLog, Workflow
 
-
 def get_workflow(db: Session, workflow_id: uuid.UUID) -> Workflow | None:
     return db.query(Workflow).filter(Workflow.id == workflow_id).first()
 
