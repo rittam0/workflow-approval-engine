@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app.routers import workflows
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -38,6 +40,10 @@ app.add_middleware(
 
 app.include_router(workflows.router)
 
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+).instrument(app).expose(app)
 
 @app.get("/health")
 def health():
