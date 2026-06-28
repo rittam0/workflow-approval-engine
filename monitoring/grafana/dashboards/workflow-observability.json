@@ -1,0 +1,45 @@
+{
+  "title": "Workflow Observability",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Workflow Creations",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "workflow_created_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Successful Transitions",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "workflow_transition_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Invalid Transitions",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "workflow_invalid_transition_total", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 7 },
+      "targets": [{ "expr": "rate(http_requests_total[1m])", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Average Request Latency",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 7 },
+      "targets": [{ "expr": "rate(http_request_duration_seconds_sum[1m]) / rate(http_request_duration_seconds_count[1m])", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory Usage MB",
+      "gridPos": { "x": 0, "y": 11, "w": 12, "h": 7 },
+      "targets": [{ "expr": "process_resident_memory_bytes / 1024 / 1024", "refId": "A" }]
+    }
+  ]
+}
