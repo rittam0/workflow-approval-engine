@@ -8,8 +8,14 @@ Production-style end-to-end workflow approval platform built with FastAPI, Postg
 - Implemented a finite-state machine (FSM) to enforce legal workflow transitions with HTTP 409 responses for invalid state changes.
 - Guaranteed transactional consistency by writing workflow state updates and audit logs atomically within a single database transaction.
 - Instrumented the application with Prometheus business metrics and Grafana dashboards for workflow creation, state transitions, latency, throughput, and process metrics.
-- Benchmarked concurrent workflow lifecycles using a custom asynchronous benchmarking tool and documented throughput, latency, and error-rate characteristics.
+- Benchmarked concurrent workflow lifecycles using a custom asynchronous benchmarking tool and documented throughput, latency, p50, p95, p99, and error-rate characteristics.
 - Configured GitHub Actions CI for backend testing and frontend lint/build validation.
+
+## Resume Metrics
+
+- Test suite: 13 passing pytest tests covering API workflows, FSM transitions, invalid transitions, filtering, 404 behavior, and audit-log validation.
+- Benchmark scale: 500 workflow lifecycles completed with 500/500 successes and 0.0% error rate at 20-way concurrency.
+- Best measured refresh result: 3.8 workflows/sec, p50 latency 4,935.19 ms, p95 latency 6,375.92 ms, and p99 latency 7,560.14 ms.
 
 ## Quick Start
 
@@ -118,37 +124,16 @@ GitHub Actions runs backend tests plus frontend lint/build on push and pull requ
 Benchmark tooling:
 
 ```bash
-python scripts/benchmark_api.py --base-url http://localhost:18080 --workflows 120 --concurrency 12 --warmup 12
-```
-
-Docker-network benchmark command:
-
-```bash
-docker run --rm \
-  --network workflow-approval-engine_default \
-  -v "$PWD:/workspace" \
-  -w /workspace \
-  python:3.10-slim \
-  python scripts/benchmark_api.py \
-    --base-url http://app:8000 \
-    --workflows 120 \
-    --concurrency 12 \
-    --warmup 12
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 500 --concurrency 20
 ```
 
 Measured results are stored in [docs/metrics.md](docs/metrics.md).
 
-| Metric | Result |
-| --- | ---: |
-| Cold start to healthy API | 17,496.36 ms |
-| Steady-state throughput | 10.65 requests/sec |
-| Error rate | 0.00% |
-| All-request p50 latency | 1,013.51 ms |
-| All-request p95 latency | 1,929.93 ms |
-| Workflow creation p50 latency | 1,089.74 ms |
-| Workflow approval p50 latency | 1,061.46 ms |
-| Complete lifecycle p50 latency | 3,220.55 ms |
-| Complete lifecycle p95 latency | 4,700.49 ms |
+| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 20 | 100 | 0 | 0.0% | 3.35 workflows/sec | 5,112.57 ms | 4,922.87 ms | 7,127.41 ms | 7,211.89 ms |
+| 250 | 20 | 250 | 0 | 0.0% | 3.17 workflows/sec | 5,746.81 ms | 4,978.23 ms | 14,661.24 ms | 15,057.13 ms |
+| 500 | 20 | 500 | 0 | 0.0% | 3.8 workflows/sec | 5,055.51 ms | 4,935.19 ms | 6,375.92 ms | 7,560.14 ms |
 
 ## Observability
 

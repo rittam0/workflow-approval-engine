@@ -1,110 +1,96 @@
 # Workflow Approval Engine Metrics
 
-Generated: 2026-06-27
+Generated: 2026-06-29
+
+## Test Results
+
+Command:
+
+```bash
+python -m pytest tests -v
+```
+
+Result:
+
+```text
+13 passed, 1 warning in 52.68s
+```
+
+Failure fixed during this refresh:
+
+- Added the direct `prometheus-client` dependency to `requirements.txt` because
+  `app/metrics.py` imports `prometheus_client.Counter` directly.
 
 ## Benchmark Method
 
-Benchmark tooling lives in `scripts/benchmark_api.py` and uses only the Python
-standard library.
+Benchmark tooling lives in `scripts/benchmark_api.py`.
 
-Each workflow lifecycle performs:
+The current benchmark scenario runs concurrent workflow lifecycle requests
+through the public REST API. Each lifecycle performs:
 
 1. `POST /workflows`
 2. `POST /workflows/{id}/approve`
-3. `GET /workflows/{id}`
 
-The steady-state run warms the API first, then executes concurrent workflow
-lifecycles and records request latency, lifecycle latency, throughput, and error
-rate.
+This exercises workflow creation, PostgreSQL persistence, FSM transition
+validation, workflow approval, state persistence, and audit-log writes.
 
 ## Environment
 
 - API: FastAPI/Uvicorn container
 - Database: PostgreSQL container
-- Compose network: `workflow-approval-engine_default`
-- API internal URL: `http://app:8000`
-- API host URL: `http://localhost:18080`
-- Benchmark workload: 120 complete workflows, 12-way concurrency, 12 warmup workflows
+- Frontend: Next.js/React container
+- Observability: Prometheus and Grafana containers
+- Compose project: `workflow-approval-engine`
+- API URL used for measured runs: `http://localhost:8000`
 
-## Reproduction Commands
+Current Compose stack was healthy before benchmarking.
 
-Cold start to health:
+## Warmup
 
-```bash
-cd /home/khrit/projects/workflow-approval-engine
-python3 scripts/benchmark_api.py \
-  --base-url http://localhost:18080 \
-  --workflows 120 \
-  --concurrency 12 \
-  --warmup 12 \
-  --cold-start-command 'docker compose restart app'
-```
-
-Steady state from inside the Docker Compose network:
+Command:
 
 ```bash
-cd /home/khrit/projects/workflow-approval-engine
-docker run --rm \
-  --network workflow-approval-engine_default \
-  -v "$PWD:/workspace" \
-  -w /workspace \
-  python:3.10-slim \
-  python scripts/benchmark_api.py \
-    --base-url http://app:8000 \
-    --workflows 120 \
-    --concurrency 12 \
-    --warmup 12
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 25 --concurrency 5
 ```
 
-## Results
+Measured warmup output:
 
-### Cold Start
+| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 25 | 5 | 25 | 0 | 0.0% | 1.3 workflows/sec | 3,033.94 ms | 1,380.40 ms | 10,047.90 ms | 10,132.06 ms |
 
-Cold start measures time from `docker compose restart app` until `GET /health`
-returns successfully.
+## Steady-State Benchmark Commands
 
-| Metric | Value |
-| --- | ---: |
-| Cold start to healthy API | 17,496.36 ms |
+```bash
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 100 --concurrency 20
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 250 --concurrency 20
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 500 --concurrency 20
+```
 
-### Steady State
+## Steady-State Results
 
-Steady-state benchmark ran after 12 warmup workflows.
+| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 100 | 20 | 100 | 0 | 0.0% | 3.35 workflows/sec | 5,112.57 ms | 4,922.87 ms | 7,127.41 ms | 7,211.89 ms |
+| 250 | 20 | 250 | 0 | 0.0% | 3.17 workflows/sec | 5,746.81 ms | 4,978.23 ms | 14,661.24 ms | 15,057.13 ms |
+| 500 | 20 | 500 | 0 | 0.0% | 3.8 workflows/sec | 5,055.51 ms | 4,935.19 ms | 6,375.92 ms | 7,560.14 ms |
 
-| Metric | Value |
-| --- | ---: |
-| Total workflows | 120 |
-| Total API requests | 360 |
-| Concurrency | 12 |
-| Wall time | 33.805 s |
-| Throughput | 10.65 requests/sec |
-| Error rate | 0.00% |
+## Resume Metrics
 
-### Request Latency
-
-| Metric | p50 | p95 | Average | Min | Max |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| All API requests | 1,013.51 ms | 1,929.93 ms | 1,115.99 ms | 199.70 ms | 2,366.15 ms |
-| Workflow creation | 1,089.74 ms | 1,825.60 ms | 1,179.30 ms | 655.63 ms | 2,366.15 ms |
-| Workflow approval | 1,061.46 ms | 1,998.80 ms | 1,192.68 ms | 631.57 ms | 2,116.27 ms |
-| Workflow detail fetch | 882.43 ms | 1,756.43 ms | 975.99 ms | 199.70 ms | 2,175.00 ms |
-
-### Complete Workflow Lifecycle
-
-Lifecycle latency measures `create -> approve -> fetch` for a single workflow.
-
-| Metric | Value |
-| --- | ---: |
-| p50 lifecycle latency | 3,220.55 ms |
-| p95 lifecycle latency | 4,700.49 ms |
-| Average lifecycle latency | 3,350.76 ms |
-| Min lifecycle latency | 2,159.62 ms |
-| Max lifecycle latency | 5,346.18 ms |
+- Automated tests: 13 passing pytest tests covering workflow creation, approval,
+  rejection, invalid transitions, filtering, 404 handling, FSM behavior, and
+  audit-log validation.
+- Benchmark scale: 500 concurrent workflow lifecycles completed with 500/500
+  successes and 0.0% error rate at 20-way concurrency.
+- Best measured steady-state throughput in this refresh: 3.8 workflows/sec for
+  500 workflow lifecycles, with p50 latency 4,935.19 ms and p95 latency
+  6,375.92 ms.
 
 ## Notes
 
-- The benchmark creates durable PostgreSQL records; use a disposable local
-  database or reset volumes before comparing repeated runs.
-- Host-to-container measurements were slower than compose-network measurements,
-  so the steady-state table reports the compose-network run for cleaner
-  service-to-service latency.
+- Benchmark results are local Docker Compose measurements and will vary by
+  machine, Docker Desktop resources, and existing database volume size.
+- Benchmark runs create durable PostgreSQL records. Use a disposable database
+  volume or reset volumes before strict apples-to-apples comparisons.
+- The benchmark reports workflow lifecycle throughput, not raw HTTP
+  requests/sec.
