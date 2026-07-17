@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "./constants";
 import type {
+  AIAction,
+  AIActionCreatePayload,
   ApiError,
   TransitionPayload,
   Workflow,
@@ -58,6 +60,13 @@ export function getWorkflow(id: string): Promise<WorkflowDetail> {
 
 export function createWorkflow(payload: WorkflowCreatePayload): Promise<Workflow> {
   return request<Workflow>("/workflows", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createAIAction(payload: AIActionCreatePayload): Promise<AIAction> {
+  return request<AIAction>("/ai-actions", {
     method: "POST",
     body: JSON.stringify(payload),
   });

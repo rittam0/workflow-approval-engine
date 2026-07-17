@@ -47,6 +47,22 @@ def create_wf(title="Test Workflow", owner="alice"):
     return client.post("/workflows", json={"title": title, "owner_id": owner})
 
 
+def create_ai_action(action_type="ISSUE_REFUND"):
+    return client.post(
+        "/ai-actions",
+        json={
+            "summary": "Review an AI-proposed action",
+            "action_type": action_type,
+            "target": "order-1842",
+            "payload": {"amount": 2499, "currency": "INR"},
+            "agent_name": "refund-agent",
+            "model_name": "test-model",
+            "rationale": "A duplicate payment was detected",
+            "owner_id": "alice",
+        },
+    )
+
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_create_workflow():
@@ -105,3 +121,68 @@ def test_list_workflows_filter_by_state():
 
     assert len(pending) == 1
     assert len(approved) == 1
+
+
+def test_create_ai_action_uses_server_owned_risk_policy():
+    r = create_ai_action("ISSUE_REFUND")
+    assert r.status_code == 201
+    action = r.json()
+    assert action["risk_level"] == "HIGH"
+
+    workflow = client.get(f"/workflows/{action['workflow_id']}").json()
+    assert workflow["state"] == "PENDING"
+    assert workflow["ai_action"]["id"] == action["id"]
+    assert workflow["ai_action"]["payload"]["amount"] == 2499
+
+
+def test_pending_ai_action_is_blocked():
+    action = create_ai_action().json()
+    decision = client.get(f"/ai-actions/{action['id']}/decision")
+    assert decision.status_code == 200
+    assert decision.json()["decision"] == "WAITING_FOR_HUMAN"
+    assert decision.json()["allowed"] is False
+
+
+def test_approved_ai_action_is_allowed():
+    action = create_ai_action().json()
+    client.post(
+        f"/workflows/{action['workflow_id']}/approve",
+        json={"actor_id": "human-reviewer", "reason": "Evidence checked"},
+    )
+
+    decision = client.get(f"/ai-actions/{action['id']}/decision").json()
+    assert decision["decision"] == "ALLOWED"
+    assert decision["allowed"] is True
+
+
+def test_rejected_ai_action_is_denied():
+    action = create_ai_action().json()
+    client.post(
+        f"/workflows/{action['workflow_id']}/reject",
+        json={"actor_id": "human-reviewer", "reason": "Unsafe target"},
+    )
+
+    decision = client.get(f"/ai-actions/{action['id']}/decision").json()
+    assert decision["decision"] == "DENIED"
+    assert decision["allowed"] is False
+
+
+def test_ai_caller_cannot_choose_its_own_risk_level():
+    payload = {
+        "summary": "Delete production record",
+        "action_type": "DELETE_RECORD",
+        "target": "customer-42",
+        "payload": {},
+        "agent_name": "cleanup-agent",
+        "owner_id": "alice",
+        "risk_level": "LOW",
+    }
+    r = client.post("/ai-actions", json=payload)
+    assert r.status_code == 422
+
+
+def test_missing_ai_action_returns_404():
+    import uuid
+
+    r = client.get(f"/ai-actions/{uuid.uuid4()}/decision")
+    assert r.status_code == 404

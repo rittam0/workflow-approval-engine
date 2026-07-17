@@ -62,7 +62,7 @@ export function WorkflowActions({ workflowId, state }: WorkflowActionsProps) {
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Actions</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Approve or reject this workflow. Actions are recorded in the audit log.
+          Approve or reject this request. AI-proposed actions remain blocked until approved.
         </p>
       </div>
 

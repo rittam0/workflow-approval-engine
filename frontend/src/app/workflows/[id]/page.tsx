@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AIActionCard } from "@/components/ai-actions/AIActionCard";
 import { AuditTimeline, WorkflowMeta } from "@/components/workflows/AuditTimeline";
 import { StatusBadge } from "@/components/workflows/StatusBadge";
 import { WorkflowActions } from "@/components/workflows/WorkflowActions";
@@ -41,6 +42,8 @@ export default async function WorkflowDetailPage({ params }: WorkflowDetailPageP
           <StatusBadge state={workflow.state} />
         </div>
       </div>
+
+      {workflow.ai_action && <AIActionCard action={workflow.ai_action} />}
 
       <section className="rounded-xl border border-slate-200 bg-white p-6">
         <WorkflowMeta

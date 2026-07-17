@@ -2,6 +2,8 @@
  
 import uuid
 from datetime import datetime
+from enum import Enum
+from typing import Any
 from typing import Optional
  
 from pydantic import BaseModel, Field
@@ -18,6 +20,28 @@ class WorkflowCreate(BaseModel):
 class TransitionRequest(BaseModel):
     actor_id: str = Field(..., min_length=1)
     reason: Optional[str] = None
+
+
+class AIActionType(str, Enum):
+    SEND_EMAIL = "SEND_EMAIL"
+    ISSUE_REFUND = "ISSUE_REFUND"
+    UPDATE_RECORD = "UPDATE_RECORD"
+    DEPLOY_CODE = "DEPLOY_CODE"
+    DELETE_RECORD = "DELETE_RECORD"
+    CUSTOM = "CUSTOM"
+
+
+class AIActionCreate(BaseModel):
+    summary: str = Field(..., min_length=1, max_length=200)
+    action_type: AIActionType
+    target: str = Field(..., min_length=1, max_length=500)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    agent_name: str = Field(..., min_length=1, max_length=255)
+    model_name: Optional[str] = Field(None, max_length=255)
+    rationale: Optional[str] = None
+    owner_id: str = Field(..., min_length=1, max_length=255)
+
+    model_config = {"extra": "forbid", "protected_namespaces": ()}
  
  
 # ── Responses ─────────────────────────────────────────────────────────────────
@@ -43,8 +67,32 @@ class WorkflowResponse(BaseModel):
     updated_at: datetime
  
     model_config = {"from_attributes": True}
+
+
+class AIActionResponse(BaseModel):
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    action_type: str
+    target: str
+    payload: dict[str, Any]
+    risk_level: str
+    agent_name: str
+    model_name: Optional[str]
+    rationale: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True, "protected_namespaces": ()}
+
+
+class AIActionDecision(BaseModel):
+    action_id: uuid.UUID
+    workflow_id: uuid.UUID
+    workflow_state: str
+    decision: str
+    allowed: bool
  
  
 class WorkflowDetail(WorkflowResponse):
     """Full detail view — includes audit history."""
     audit_entries: list[AuditEntry] = []
+    ai_action: Optional[AIActionResponse] = None

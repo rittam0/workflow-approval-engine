@@ -1,10 +1,14 @@
-# Workflow Approval Engine
+# AI Action Approval Engine
 
-Production-style end-to-end workflow approval platform built with FastAPI, PostgreSQL, Next.js, Docker, Prometheus, and Grafana. The application enforces workflow state transitions using a finite-state machine (FSM), maintains a transactional audit trail, and exposes production-style observability through Prometheus metrics and Grafana dashboards.
+A human-control layer for actions proposed by AI tools, built on the existing production-style workflow approval platform. An AI tool submits the exact action it wants to take, the server assigns a non-editable risk level, and a human approves or rejects it through the existing workflow. The tool can then read a clear `WAITING_FOR_HUMAN`, `ALLOWED`, or `DENIED` decision.
+
+This project does not claim to invent approval software or to make an LLM approve its own work. Its purpose is to keep important AI actions under accountable human control while preserving the deterministic workflow, transactional audit trail, and observability of the original system. Ordinary manual approval requests remain supported.
 
 ## Resume Highlights
 
 - Built a production-style end-to-end workflow approval platform using FastAPI, PostgreSQL, Next.js, React, TypeScript, Docker Compose, Prometheus, and Grafana.
+- Added a model-agnostic AI action API that captures the requested action, target, exact payload, model identity, rationale, and a server-owned risk rating before human review.
+- Exposed a machine-readable decision endpoint so integrated AI tools can remain blocked until a human returns an allowed decision.
 - Implemented a finite-state machine (FSM) to enforce legal workflow transitions with HTTP 409 responses for invalid state changes.
 - Guaranteed transactional consistency by writing workflow state updates and audit logs atomically within a single database transaction.
 - Instrumented the application with Prometheus business metrics and Grafana dashboards for workflow creation, state transitions, latency, throughput, and process metrics.
@@ -13,7 +17,7 @@ Production-style end-to-end workflow approval platform built with FastAPI, Postg
 
 ## Resume Metrics
 
-- Test suite: 13 passing pytest tests covering API workflows, FSM transitions, invalid transitions, filtering, 404 behavior, and audit-log validation.
+- Test suite: 19 passing pytest tests covering the original workflows plus blocked, allowed, denied, server-owned risk, and missing-action cases for AI proposals.
 - Benchmark scale: 500 workflow lifecycles completed with 500/500 successes and 0.0% error rate at 20-way concurrency.
 - Best measured refresh result: 3.8 workflows/sec, p50 latency 4,935.19 ms, p95 latency 6,375.92 ms, and p99 latency 7,560.14 ms.
 
@@ -54,11 +58,13 @@ Alternate URLs used during verification:
 
 ```mermaid
 flowchart LR
-    User["Browser user"] --> Frontend["Next.js / React frontend"]
+    Agent["AI tool"] -->|"Propose action"| API["FastAPI API"]
+    User["Human reviewer"] --> Frontend["Next.js / React frontend"]
     Frontend --> API["FastAPI API"]
     API --> DB[("PostgreSQL")]
     API --> Audit["Audit log writes"]
     Audit --> DB
+    API -->|"Waiting / allowed / denied"| Agent
 ```
 
 ## Tech Stack
@@ -94,6 +100,9 @@ Every workflow create and transition writes an audit log entry. Invalid transiti
 | `GET` | `/workflows/{id}` | Workflow detail with audit history |
 | `POST` | `/workflows/{id}/approve` | Approve pending workflow |
 | `POST` | `/workflows/{id}/reject` | Reject pending workflow |
+| `POST` | `/ai-actions` | Submit an AI-proposed action for human approval |
+| `GET` | `/ai-actions/{id}` | Read the original AI proposal and risk evidence |
+| `GET` | `/ai-actions/{id}/decision` | Read whether the action is waiting, allowed, or denied |
 
 ## Testing
 
@@ -106,7 +115,7 @@ python -m pytest tests -v
 Previously verified result:
 
 ```text
-13 passed
+19 passed
 ```
 
 Run frontend checks:
@@ -208,6 +217,7 @@ npm run dev
 ## Known Limitations
 
 - Authentication and authorization are intentionally not implemented; the portfolio UI sends `owner_id` and `actor_id` as plain strings.
+- The decision endpoint is a control-plane MVP. A connected AI tool must honor the decision; signed execution permits and downstream enforcement are the next security boundary.
 - Database schema is created on startup with SQLAlchemy metadata; production migrations such as Alembic are not included.
 - Benchmarks were collected on a local Docker Desktop environment, so absolute latency will vary by machine.
 - Benchmark runs create durable PostgreSQL records unless the database volume is reset.

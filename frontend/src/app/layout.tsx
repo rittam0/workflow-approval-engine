@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Workflow Approval Engine",
-  description: "Manage approval workflows with audit history",
+  title: "AI Action Approval Engine",
+  description: "Human approval before AI tools take important actions",
 };
 
 export default function RootLayout({
