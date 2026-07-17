@@ -10,7 +10,7 @@ this is the atomicity guarantee that makes the audit log trustworthy.
 from datetime import datetime, timezone
 import uuid
  
-from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import CHAR, JSON, Column, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import TypeDecorator
@@ -59,6 +59,36 @@ class Workflow(Base):
  
     audit_entries = relationship("AuditLog", back_populates="workflow",
                                  order_by="AuditLog.timestamp")
+    ai_action = relationship(
+        "AIAction",
+        back_populates="workflow",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class AIAction(Base):
+    """An action proposed by an AI tool and guarded by a human workflow."""
+
+    __tablename__ = "ai_actions"
+
+    id           = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    workflow_id  = Column(GUID(), ForeignKey("workflows.id"), nullable=False, unique=True)
+    action_type  = Column(String(50), nullable=False)
+    target       = Column(Text, nullable=False)
+    payload      = Column(JSON, nullable=False, default=dict)
+    risk_level   = Column(String(20), nullable=False)
+    agent_name   = Column(String(255), nullable=False)
+    model_name   = Column(String(255), nullable=True)
+    rationale    = Column(Text, nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    workflow = relationship("Workflow", back_populates="ai_action")
+
+    __table_args__ = (
+        Index("idx_ai_actions_workflow_id", "workflow_id"),
+        Index("idx_ai_actions_risk_level", "risk_level"),
+    )
  
  
 class AuditLog(Base):

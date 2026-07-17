@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-from app.routers import workflows
+from app.routers import ai_actions, workflows
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
@@ -41,6 +41,7 @@ app.add_middleware(
 )
 
 app.include_router(workflows.router)
+app.include_router(ai_actions.router)
 
 Instrumentator(
     should_group_status_codes=True,

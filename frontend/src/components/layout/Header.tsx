@@ -12,13 +12,16 @@ export function Header() {
             Workflow Approval Engine
           </Link>
           <p className="text-sm text-slate-500">
-            Manage approval requests and audit history
+            Human approval before AI tools take important actions
           </p>
         </div>
         <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end md:w-auto">
           <UserIdentity />
           <Link href="/workflows/new">
-            <Button className="w-full sm:w-auto">New Workflow</Button>
+            <Button variant="secondary" className="w-full sm:w-auto">Manual Request</Button>
+          </Link>
+          <Link href="/ai-actions/new">
+            <Button className="w-full sm:w-auto">Propose AI Action</Button>
           </Link>
         </div>
       </div>

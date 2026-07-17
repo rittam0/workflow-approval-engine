@@ -4,11 +4,23 @@ from sqlalchemy.orm import Session
 
 from app.fsm import WorkflowState, apply_transition
 from app.metrics import (
+    ai_action_created_total,
+    ai_action_decision_checks_total,
     workflow_created_total,
     workflow_invalid_transition_total,
     workflow_transition_total,
 )
-from app.models import AuditLog, Workflow
+from app.models import AIAction, AuditLog, Workflow
+
+
+AI_ACTION_RISK = {
+    "SEND_EMAIL": "MEDIUM",
+    "ISSUE_REFUND": "HIGH",
+    "UPDATE_RECORD": "HIGH",
+    "DEPLOY_CODE": "CRITICAL",
+    "DELETE_RECORD": "CRITICAL",
+    "CUSTOM": "HIGH",
+}
 
 def get_workflow(db: Session, workflow_id: uuid.UUID) -> Workflow | None:
     return db.query(Workflow).filter(Workflow.id == workflow_id).first()
@@ -40,6 +52,84 @@ def create_workflow(db: Session, title: str, description: str | None, owner_id: 
 
     db.refresh(workflow)
     return workflow
+
+
+def create_ai_action(
+    db: Session,
+    *,
+    summary: str,
+    action_type: str,
+    target: str,
+    payload: dict,
+    agent_name: str,
+    model_name: str | None,
+    rationale: str | None,
+    owner_id: str,
+) -> AIAction:
+    """Create an AI proposal and its human approval request atomically."""
+    risk_level = AI_ACTION_RISK[action_type]
+    workflow = Workflow(
+        title=summary,
+        description=f"{agent_name} proposes {action_type.lower().replace('_', ' ')} on {target}",
+        owner_id=owner_id,
+    )
+    db.add(workflow)
+    db.flush()
+
+    action = AIAction(
+        workflow_id=workflow.id,
+        action_type=action_type,
+        target=target,
+        payload=payload,
+        risk_level=risk_level,
+        agent_name=agent_name,
+        model_name=model_name,
+        rationale=rationale,
+    )
+    db.add(action)
+
+    _write_audit(
+        db,
+        workflow.id,
+        from_state="—",
+        to_state="PENDING",
+        actor_id=agent_name,
+        reason="AI-proposed action submitted for human approval",
+    )
+
+    db.commit()
+    workflow_created_total.inc()
+    ai_action_created_total.labels(
+        action_type=action_type,
+        risk_level=risk_level,
+    ).inc()
+    db.refresh(action)
+    return action
+
+
+def get_ai_action(db: Session, action_id: uuid.UUID) -> AIAction | None:
+    return db.query(AIAction).filter(AIAction.id == action_id).first()
+
+
+def get_ai_action_decision(db: Session, action_id: uuid.UUID) -> dict | None:
+    action = get_ai_action(db, action_id)
+    if action is None:
+        return None
+
+    decisions = {
+        "PENDING": ("WAITING_FOR_HUMAN", False),
+        "APPROVED": ("ALLOWED", True),
+        "REJECTED": ("DENIED", False),
+    }
+    decision, allowed = decisions[action.workflow.state]
+    ai_action_decision_checks_total.labels(decision=decision).inc()
+    return {
+        "action_id": action.id,
+        "workflow_id": action.workflow_id,
+        "workflow_state": action.workflow.state,
+        "decision": decision,
+        "allowed": allowed,
+    }
 
 
 def transition_workflow(

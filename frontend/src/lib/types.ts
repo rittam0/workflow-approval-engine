@@ -21,6 +21,39 @@ export interface Workflow {
 
 export interface WorkflowDetail extends Workflow {
   audit_entries: AuditEntry[];
+  ai_action: AIAction | null;
+}
+
+export type AIActionType =
+  | "SEND_EMAIL"
+  | "ISSUE_REFUND"
+  | "UPDATE_RECORD"
+  | "DEPLOY_CODE"
+  | "DELETE_RECORD"
+  | "CUSTOM";
+
+export interface AIAction {
+  id: string;
+  workflow_id: string;
+  action_type: AIActionType;
+  target: string;
+  payload: Record<string, unknown>;
+  risk_level: "MEDIUM" | "HIGH" | "CRITICAL";
+  agent_name: string;
+  model_name: string | null;
+  rationale: string | null;
+  created_at: string;
+}
+
+export interface AIActionCreatePayload {
+  summary: string;
+  action_type: AIActionType;
+  target: string;
+  payload: Record<string, unknown>;
+  agent_name: string;
+  model_name?: string;
+  rationale?: string;
+  owner_id: string;
 }
 
 export interface WorkflowCreatePayload {
