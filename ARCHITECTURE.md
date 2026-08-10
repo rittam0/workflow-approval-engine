@@ -1,79 +1,48 @@
-# AI Action Approval Engine — Architecture
+# Workflow Approval Engine — Architecture
 
-## Objective
+## Approval path
 
-Place a human decision between an AI-proposed action and the system that may carry it out. Manual approval requests remain supported through the same workflow engine.
+The FastAPI service enforces only `PENDING -> APPROVED` and
+`PENDING -> REJECTED`. It locks the workflow row and writes the decision audit
+entry in the same PostgreSQL transaction as the state change. Approval adds one
+`execution_jobs` outbox row before that transaction commits; rejection does not.
 
-## Current Implementation
+Manual requests and AI-proposed actions use this same approval path. The
+optional AI-action API records proposal evidence and a server-owned risk level,
+then exposes `WAITING_FOR_HUMAN`, `ALLOWED`, or `DENIED`; it does not bypass the
+human decision.
 
-### API Layer
-- FastAPI REST endpoints
-- CORS support for browser clients
-- Swagger documentation at `/docs`
+## Execution path
 
-### Workflow Engine
-- Explicit state machine (`app/fsm.py`)
-- Service layer with transactional audit logging
-- Pessimistic locking on transitions (`SELECT FOR UPDATE`)
-
-### AI Action Guard
-- AI tools submit a proposed action, target, exact payload, model identity, and rationale
-- Server-owned policy assigns the risk level; the AI caller cannot lower it
-- Every AI action is linked one-to-one with an ordinary approval workflow
-- Decision endpoint returns `WAITING_FOR_HUMAN`, `ALLOWED`, or `DENIED`
-- Approval and rejection continue to use the existing state machine and audit log
-
-### Persistence Layer
-- PostgreSQL via SQLAlchemy
-- `workflows` table for current state
-- `audit_log` table for immutable transition history
-- `ai_actions` table for AI proposal evidence and its linked workflow
-
-### Frontend Layer
-- Next.js App Router dashboard
-- Workflow list with state filtering and status badges
-- Create, approve, and reject flows
-- Audit timeline on workflow detail pages
-- Typed API client mirroring backend schemas
-- AI action submission form and evidence card on the existing workflow detail page
-
-### Infrastructure
-- Docker Compose (`db`, `app`, `frontend`)
-- GitHub Actions CI (backend pytest + frontend build)
-
-## Architecture Diagram
-
-```
-AI Tool ---- submits proposed action ----+
-                                         |
-Human Reviewer ---- Next.js UI ----------+--> FastAPI API
-                                               |
-                                               +--> Server-owned risk policy
-                                               +--> Approval state machine
-                                               +--> PostgreSQL + atomic audit log
-                                         |
-AI Tool <---- checks allow/deny decision-+
+```text
+Browser / API client
+        |
+        v
+FastAPI approval API
+        |
+        v
+PostgreSQL: workflow + audit + outbox (one transaction)
+        |
+        v
+Worker claim (FOR UPDATE SKIP LOCKED + lease)
+        |
+        v
+Idempotent execution result + execution event
 ```
 
-## State Machine
+The separate worker polls PostgreSQL directly. Concurrent workers skip locked
+rows. Each claim increments `attempt_count` and carries a token and lease, so a
+terminated worker's job becomes claimable again. A unique idempotency key on the
+durable execution result prevents duplicate successful effects.
 
-| Current State | Action | Next State |
-|---------------|--------|------------|
-| PENDING | approve | APPROVED |
-| PENDING | reject | REJECTED |
+Failures use bounded exponential backoff. Attempts one and two create
+`RETRY_SCHEDULED` events; attempt three creates a `DEAD_LETTERED` event. The
+worker exports queue and outcome metrics for Prometheus.
 
-Illegal transitions raise `ValueError` and return HTTP 409.
+## Existing layers preserved
 
-## Planned Components
-
-### Notification Service
-Email / Slack notifications on approval events
-
-### Enforced Execution Permits
-Issue short-lived, signed permits that an integrated downstream service validates before carrying out an approved action. The current decision endpoint is the control-plane MVP; callers must integrate it correctly.
-
-### Role-Based Access Control
-Authenticated users with approval permissions
-
-### Multi-Stage Approval Chains
-Sequential approvers before final state
+- Next.js manual approval UI and AI-action submission client
+- FastAPI endpoints and finite-state machine
+- PostgreSQL workflow, AI-action, and audit tables
+- Docker Compose deployment
+- Prometheus and Grafana monitoring

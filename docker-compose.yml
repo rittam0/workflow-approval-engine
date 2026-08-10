@@ -18,6 +18,7 @@ services:
 
   app:
     build: .
+    image: workflow-approval-engine-backend
     restart: unless-stopped
     depends_on:
       db:
@@ -33,6 +34,18 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+
+  worker:
+    image: workflow-approval-engine-backend
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/workflows}
+      WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-0.25}
+      WORKER_BACKOFF_BASE_SECONDS: ${WORKER_BACKOFF_BASE_SECONDS:-1}
 
   frontend:
     build:
@@ -55,6 +68,8 @@ services:
     depends_on:
       app:
         condition: service_healthy
+      worker:
+        condition: service_started
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:

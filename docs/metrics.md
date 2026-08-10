@@ -1,96 +1,33 @@
-# Workflow Approval Engine Metrics
+# Metrics
 
-Generated: 2026-06-29
+Prometheus continues to scrape the API metrics endpoint and also scrapes the
+worker's internal `:8001/metrics` endpoint.
 
-## Test Results
+Existing business metrics:
 
-Command:
+- `workflow_created_total`
+- `workflow_transition_total`
+- `workflow_invalid_transition_total`
 
-```bash
-python -m pytest tests -v
-```
+Execution metrics:
 
-Result:
+- `execution_jobs_completed_total`
+- `execution_jobs_retried_total`
+- `execution_jobs_dead_lettered_total`
+- `execution_job_queue_depth`
 
-```text
-13 passed, 1 warning in 52.68s
-```
+## Measured verification
 
-Failure fixed during this refresh:
+The 2026-08-10 benchmark completed 3,000/3,000 normal workflows across three
+200-workflow runs at concurrency 1, 5, 10, 20, and 40. The highest median
+throughput was 11.19 workflows/sec at concurrency 40; the worst p95 at that
+level was 2,268.94 ms.
 
-- Added the direct `prometheus-client` dependency to `requirements.txt` because
-  `app/metrics.py` imports `prometheus_client.Counter` directly.
+The separate 10-workflow deterministic failure run recorded 20 retries and 10
+dead letters. PostgreSQL verification found exactly three attempts per job, 10
+of 10 jobs `DEAD_LETTERED`, zero execution results for the failing cohort, and
+zero duplicated execution-result idempotency keys globally.
 
-## Benchmark Method
-
-Benchmark tooling lives in `scripts/benchmark_api.py`.
-
-The current benchmark scenario runs concurrent workflow lifecycle requests
-through the public REST API. Each lifecycle performs:
-
-1. `POST /workflows`
-2. `POST /workflows/{id}/approve`
-
-This exercises workflow creation, PostgreSQL persistence, FSM transition
-validation, workflow approval, state persistence, and audit-log writes.
-
-## Environment
-
-- API: FastAPI/Uvicorn container
-- Database: PostgreSQL container
-- Frontend: Next.js/React container
-- Observability: Prometheus and Grafana containers
-- Compose project: `workflow-approval-engine`
-- API URL used for measured runs: `http://localhost:8000`
-
-Current Compose stack was healthy before benchmarking.
-
-## Warmup
-
-Command:
-
-```bash
-python scripts/benchmark_api.py --base-url http://localhost:8000 --count 25 --concurrency 5
-```
-
-Measured warmup output:
-
-| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 25 | 5 | 25 | 0 | 0.0% | 1.3 workflows/sec | 3,033.94 ms | 1,380.40 ms | 10,047.90 ms | 10,132.06 ms |
-
-## Steady-State Benchmark Commands
-
-```bash
-python scripts/benchmark_api.py --base-url http://localhost:8000 --count 100 --concurrency 20
-python scripts/benchmark_api.py --base-url http://localhost:8000 --count 250 --concurrency 20
-python scripts/benchmark_api.py --base-url http://localhost:8000 --count 500 --concurrency 20
-```
-
-## Steady-State Results
-
-| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 20 | 100 | 0 | 0.0% | 3.35 workflows/sec | 5,112.57 ms | 4,922.87 ms | 7,127.41 ms | 7,211.89 ms |
-| 250 | 20 | 250 | 0 | 0.0% | 3.17 workflows/sec | 5,746.81 ms | 4,978.23 ms | 14,661.24 ms | 15,057.13 ms |
-| 500 | 20 | 500 | 0 | 0.0% | 3.8 workflows/sec | 5,055.51 ms | 4,935.19 ms | 6,375.92 ms | 7,560.14 ms |
-
-## Resume Metrics
-
-- Automated tests: 13 passing pytest tests covering workflow creation, approval,
-  rejection, invalid transitions, filtering, 404 handling, FSM behavior, and
-  audit-log validation.
-- Benchmark scale: 500 concurrent workflow lifecycles completed with 500/500
-  successes and 0.0% error rate at 20-way concurrency.
-- Best measured steady-state throughput in this refresh: 3.8 workflows/sec for
-  500 workflow lifecycles, with p50 latency 4,935.19 ms and p95 latency
-  6,375.92 ms.
-
-## Notes
-
-- Benchmark results are local Docker Compose measurements and will vary by
-  machine, Docker Desktop resources, and existing database volume size.
-- Benchmark runs create durable PostgreSQL records. Use a disposable database
-  volume or reset volumes before strict apples-to-apples comparisons.
-- The benchmark reports workflow lifecycle throughput, not raw HTTP
-  requests/sec.
+The bundled Grafana dashboard adds four small stat panels for the execution
+metrics. See [benchmark.md](benchmark.md) for the benchmark method and aggregate
+results.

@@ -10,7 +10,7 @@ from app.metrics import (
     workflow_invalid_transition_total,
     workflow_transition_total,
 )
-from app.models import AIAction, AuditLog, Workflow
+from app.models import AIAction, AuditLog, ExecutionJob, Workflow
 
 
 AI_ACTION_RISK = {
@@ -31,6 +31,10 @@ def list_workflows(db: Session, state: str | None = None) -> list[Workflow]:
     if state:
         q = q.filter(Workflow.state == state.upper())
     return q.order_by(Workflow.created_at.desc()).all()
+
+
+def get_execution_job(db: Session, workflow_id: uuid.UUID) -> ExecutionJob | None:
+    return db.query(ExecutionJob).filter(ExecutionJob.workflow_id == workflow_id).first()
 
 
 def create_workflow(db: Session, title: str, description: str | None, owner_id: str) -> Workflow:
@@ -138,6 +142,7 @@ def transition_workflow(
     action: str,
     actor_id: str,
     reason: str | None = None,
+    simulate_failure: bool = False,
 ) -> Workflow:
     workflow = db.query(Workflow).filter(Workflow.id == workflow_id).with_for_update().first()
 
@@ -163,6 +168,15 @@ def transition_workflow(
         actor_id=actor_id,
         reason=reason,
     )
+
+    if next_state is WorkflowState.APPROVED:
+        db.add(
+            ExecutionJob(
+                workflow_id=workflow.id,
+                idempotency_key=f"workflow-execution:{workflow.id}",
+                simulate_failure=simulate_failure,
+            )
+        )
 
     db.commit()
 

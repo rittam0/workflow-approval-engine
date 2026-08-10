@@ -1,227 +1,130 @@
-# AI Action Approval Engine
+# Workflow Approval Engine
 
-A human-control layer for actions proposed by AI tools, built on the existing production-style workflow approval platform. An AI tool submits the exact action it wants to take, the server assigns a non-editable risk level, and a human approves or rejects it through the existing workflow. The tool can then read a clear `WAITING_FOR_HUMAN`, `ALLOWED`, or `DENIED` decision.
+A durable manual approval workflow for consequential automated actions. A human
+decision is recorded synchronously and atomically; approved work is placed in a
+PostgreSQL transactional outbox and executed by a separate worker.
 
-This project does not claim to invent approval software or to make an LLM approve its own work. Its purpose is to keep important AI actions under accountable human control while preserving the deterministic workflow, transactional audit trail, and observability of the original system. Ordinary manual approval requests remain supported.
-
-## Resume Highlights
-
-- Built a production-style end-to-end workflow approval platform using FastAPI, PostgreSQL, Next.js, React, TypeScript, Docker Compose, Prometheus, and Grafana.
-- Added a model-agnostic AI action API that captures the requested action, target, exact payload, model identity, rationale, and a server-owned risk rating before human review.
-- Exposed a machine-readable decision endpoint so integrated AI tools can remain blocked until a human returns an allowed decision.
-- Implemented a finite-state machine (FSM) to enforce legal workflow transitions with HTTP 409 responses for invalid state changes.
-- Guaranteed transactional consistency by writing workflow state updates and audit logs atomically within a single database transaction.
-- Instrumented the application with Prometheus business metrics and Grafana dashboards for workflow creation, state transitions, latency, throughput, and process metrics.
-- Benchmarked concurrent workflow lifecycles using a custom asynchronous benchmarking tool and documented throughput, latency, p50, p95, p99, and error-rate characteristics.
-- Configured GitHub Actions CI for backend testing and frontend lint/build validation.
-
-## Resume Metrics
-
-- Test suite: 19 passing pytest tests covering the original workflows plus blocked, allowed, denied, server-owned risk, and missing-action cases for AI proposals.
-- Benchmark scale: 500 workflow lifecycles completed with 500/500 successes and 0.0% error rate at 20-way concurrency.
-- Best measured refresh result: 3.8 workflows/sec, p50 latency 4,935.19 ms, p95 latency 6,375.92 ms, and p99 latency 7,560.14 ms.
-
-## Quick Start
-
-Run the full stack:
-
-```bash
-docker compose up -d --build
-```
-
-Default service URLs:
-
-| Service | URL |
-| --- | --- |
-| Frontend | http://localhost:3000 |
-| API | http://localhost:8000 |
-| API docs | http://localhost:8000/docs |
-| PostgreSQL | localhost:5432 |
-
-If local ports are already in use:
-
-```bash
-API_PORT=18080 FRONTEND_PORT=13000 POSTGRES_PORT=15432 \
-NEXT_PUBLIC_API_URL=http://localhost:18080 \
-docker compose up -d --build
-```
-
-Alternate URLs used during verification:
-
-| Service | URL |
-| --- | --- |
-| Frontend | http://localhost:13000 |
-| API | http://localhost:18080 |
-| PostgreSQL | localhost:15432 |
-
-## Architecture
-
-```mermaid
-flowchart LR
-    Agent["AI tool"] -->|"Propose action"| API["FastAPI API"]
-    User["Human reviewer"] --> Frontend["Next.js / React frontend"]
-    Frontend --> API["FastAPI API"]
-    API --> DB[("PostgreSQL")]
-    API --> Audit["Audit log writes"]
-    Audit --> DB
-    API -->|"Waiting / allowed / denied"| Agent
-```
-
-## Tech Stack
-
-| Layer | Technologies |
-| --- | --- |
-| Backend | Python, FastAPI, SQLAlchemy, Pydantic, Uvicorn |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
-| Database | PostgreSQL |
-| Infrastructure | Docker, Docker Compose |
-| CI | GitHub Actions |
-| Testing | pytest, FastAPI TestClient |
-| Observability | Prometheus, Grafana |
-
-## Workflow Model
-
-Allowed state transitions:
+The supported state transitions remain:
 
 ```text
 PENDING -> APPROVED
 PENDING -> REJECTED
 ```
 
-Every workflow create and transition writes an audit log entry. Invalid transitions return an error instead of changing state.
+Every create and decision writes the existing audit log. Approval also creates
+an execution job in the same database transaction. Submission can come from the
+browser, another application, or the optional AI-action client API; the product
+remains a human approval workflow.
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/health` | Health check |
-| `POST` | `/workflows` | Create workflow |
-| `GET` | `/workflows` | List workflows, optionally filtered by `state` |
-| `GET` | `/workflows/{id}` | Workflow detail with audit history |
-| `POST` | `/workflows/{id}/approve` | Approve pending workflow |
-| `POST` | `/workflows/{id}/reject` | Reject pending workflow |
-| `POST` | `/ai-actions` | Submit an AI-proposed action for human approval |
-| `GET` | `/ai-actions/{id}` | Read the original AI proposal and risk evidence |
-| `GET` | `/ai-actions/{id}/decision` | Read whether the action is waiting, allowed, or denied |
-
-## Testing
-
-Run backend tests:
+## Quick start
 
 ```bash
-python -m pytest tests -v
+docker compose up -d --build
 ```
-
-Previously verified result:
-
-```text
-19 passed
-```
-
-Run frontend checks:
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
-
-GitHub Actions runs backend tests plus frontend lint/build on push and pull request.
-
-## Benchmarks
-
-Benchmark tooling:
-
-```bash
-python scripts/benchmark_api.py --base-url http://localhost:8000 --count 500 --concurrency 20
-```
-
-Measured results are stored in [docs/metrics.md](docs/metrics.md).
-
-| Workflows | Concurrency | Successful | Failed | Error rate | Throughput | Mean latency | p50 latency | p95 latency | p99 latency |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 100 | 20 | 100 | 0 | 0.0% | 3.35 workflows/sec | 5,112.57 ms | 4,922.87 ms | 7,127.41 ms | 7,211.89 ms |
-| 250 | 20 | 250 | 0 | 0.0% | 3.17 workflows/sec | 5,746.81 ms | 4,978.23 ms | 14,661.24 ms | 15,057.13 ms |
-| 500 | 20 | 500 | 0 | 0.0% | 3.8 workflows/sec | 5,055.51 ms | 4,935.19 ms | 6,375.92 ms | 7,560.14 ms |
-
-## Observability
-
-Business metrics exposed through /metrics:
-
-- workflow_created_total
-- workflow_transition_total
-- workflow_invalid_transition_total
-
-Infrastructure metrics:
-
-- HTTP request throughput
-- HTTP request latency
-- Memory usage
-- Open file descriptors
 
 | Service | URL |
 | --- | --- |
+| Manual workflow UI | http://localhost:3000 |
+| API and docs | http://localhost:8000 / http://localhost:8000/docs |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3001 |
 
-## Deployment
+Configuration is environment-driven; see [.env.example](.env.example).
 
-The project is deployable as Docker containers:
+## Architecture
 
-- `app`: FastAPI API service
-- `frontend`: Next.js frontend service
-- `db`: PostgreSQL service
-
-Configuration is environment-driven. See [.env.example](.env.example) for database URL, CORS origins, public frontend API URL, internal Docker API URL, and port overrides.
-
-No Kubernetes manifests are included in this repository.
-
-## Demo / Screenshots
-
-The running demo exposes:
-
-- Dashboard and workflow list at the frontend URL.
-- Workflow creation form.
-- Workflow detail page with approve/reject actions.
-- Audit history for create and transition events.
-- Swagger API documentation at `/docs`.
-
-Screenshots to include:
-
-- Frontend dashboard
-- Workflow detail page
-- Swagger API documentation
-- Prometheus metrics
-- Grafana observability dashboard
-
-## Local Development
-
-Backend:
-
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+```text
+Manual UI / API client
+          |
+          v
+     FastAPI API -> PostgreSQL transactional outbox -> worker -> execution result
+                         |                              |
+                         +---- audit / execution events+
 ```
 
-Frontend:
+The API locks a pending workflow and commits its approval state, audit entry,
+and `execution_jobs` row together. Workers claim due rows with PostgreSQL
+`FOR UPDATE SKIP LOCKED`. A lease recovers abandoned claims, while the unique
+idempotency key on `execution_results` prevents a successful effect from being
+recorded twice. Failed jobs retry after 1 and 2 seconds and become
+`DEAD_LETTERED` on the third failed attempt.
+
+## API
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/workflows` | Create a pending workflow |
+| `GET` | `/workflows` | List workflows, optionally by state |
+| `GET` | `/workflows/{id}` | Workflow detail and decision audit trail |
+| `POST` | `/workflows/{id}/approve` | Record a human approval |
+| `POST` | `/workflows/{id}/reject` | Record a human rejection |
+| `GET` | `/workflows/{id}/execution-job` | Read execution status and attempts |
+| `POST` | `/ai-actions` | Submit an optional AI-proposed action for review |
+| `GET` | `/ai-actions/{id}` | Read the proposal and server-owned risk evidence |
+| `GET` | `/ai-actions/{id}/decision` | Read waiting, allowed, or denied status |
+
+## Three-step failure demo
+
+1. Create a workflow and copy its `id`:
+
+   ```bash
+   curl -sS -X POST http://localhost:8000/workflows \
+     -H 'content-type: application/json' \
+     -d '{"title":"Failure demo","owner_id":"alice"}'
+   ```
+
+2. Approve it with the harmless deterministic failure payload:
+
+   ```bash
+   curl -sS -X POST http://localhost:8000/workflows/WORKFLOW_ID/approve \
+     -H 'content-type: application/json' \
+     -d '{"actor_id":"bob","reason":"failure demo","simulate_failure":true}'
+   ```
+
+3. After about three seconds, inspect the terminal job (`attempt_count: 3`,
+   `status: "DEAD_LETTERED"`) and worker metrics:
+
+   ```bash
+   curl -sS http://localhost:8000/workflows/WORKFLOW_ID/execution-job
+   curl -sS http://localhost:9090/api/v1/query?query=execution_jobs_dead_lettered_total
+   ```
+
+## Verification
 
 ```bash
-cd frontend
-cp .env.local.example .env.local
-npm install
-npm run dev
+python -m pytest tests -v
+cd frontend && npm run lint && npm run build
 ```
 
-## Known Limitations
+The focused backend tests cover transactional rollback, two-worker claiming,
+bounded retries/dead-lettering, once-only successful completion, and the
+existing AI-action decision guard.
 
-- Authentication and authorization are intentionally not implemented; the portfolio UI sends `owner_id` and `actor_id` as plain strings.
-- The decision endpoint is a control-plane MVP. A connected AI tool must honor the decision; signed execution permits and downstream enforcement are the next security boundary.
-- Database schema is created on startup with SQLAlchemy metadata; production migrations such as Alembic are not included.
-- Benchmarks were collected on a local Docker Desktop environment, so absolute latency will vary by machine.
-- Benchmark runs create durable PostgreSQL records unless the database volume is reset.
+## Benchmark
 
-## Failure Mode Validation
+The benchmark measures create, approval, worker execution, and terminal job
+status at concurrency 1, 5, 10, 20, and 40:
 
-Failure mode tested: requests for nonexistent workflow IDs return HTTP 404 instead of silently succeeding or corrupting workflow state. The test suite covers this failure path alongside successful workflow creation, approval, filtering, and audit-log validation.
+```bash
+python scripts/benchmark_api.py --base-url http://localhost:8000 --count 200
+```
+
+Measured PostgreSQL/Docker results are recorded in
+[docs/benchmark.md](docs/benchmark.md). Runs create durable records.
+
+## Observability
+
+Existing workflow, AI-action, and HTTP metrics are preserved. The worker
+exposes counters for completed, retried, and dead-lettered jobs plus a
+queue-depth gauge on its internal `:8001/metrics` endpoint; Prometheus scrapes
+both API and worker.
+
+## Known limitations
+
+- Authentication and authorization are intentionally out of scope; IDs are
+  supplied as plain strings.
+- The AI decision endpoint is a control-plane guard; connected callers must
+  honor its result.
+- Schema creation uses SQLAlchemy metadata rather than a migration framework.
+- The included executor records a harmless durable result; a real downstream
+  integration must honor the supplied idempotency key.

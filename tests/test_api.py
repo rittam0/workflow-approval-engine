@@ -76,6 +76,10 @@ def test_approve_workflow():
     r = client.post(f"/workflows/{wf_id}/approve", json={"actor_id": "bob", "reason": "LGTM"})
     assert r.status_code == 200
     assert r.json()["state"] == "APPROVED"
+    job = client.get(f"/workflows/{wf_id}/execution-job")
+    assert job.status_code == 200
+    assert job.json()["status"] == "PENDING"
+    assert job.json()["attempt_count"] == 0
 
 
 def test_reject_workflow():
@@ -83,6 +87,7 @@ def test_reject_workflow():
     r = client.post(f"/workflows/{wf_id}/reject", json={"actor_id": "carol"})
     assert r.status_code == 200
     assert r.json()["state"] == "REJECTED"
+    assert client.get(f"/workflows/{wf_id}/execution-job").status_code == 404
 
 
 def test_illegal_transition_returns_409():

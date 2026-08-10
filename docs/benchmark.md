@@ -1,18 +1,46 @@
-# Workflow Approval Engine Benchmark
+# End-to-end lifecycle benchmark
 
-Benchmark scenario: full workflow lifecycle execution through the public REST API.
+Measured on 2026-08-10 with the Docker Compose FastAPI API, PostgreSQL 14, and
+one execution worker. Each run sent 200 workflows through create, synchronous
+approval, outbox claim, execution-result commit, and terminal-status polling at
+each concurrency level. Three runs were recorded per level.
 
-Each lifecycle performs:
-1. Create workflow
-2. Persist workflow in PostgreSQL
-3. Approve workflow
-4. Persist state transition
-5. Write audit log entry
+Command, run three times:
 
-| Total workflows | Concurrency | Successful | Failed | Error rate | Throughput | p95 latency | p99 latency |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 500 | 20 | 500 | 0 | 0.0% | 18.84 workflows/sec | 1418.23 ms | 1575.98 ms |
+```bash
+docker compose run --rm app python scripts/benchmark_api.py \
+  --base-url http://app:8000 --count 200
+```
 
-## Interpretation
+The table reports median throughput across the three runs and the worst
+(highest) observed p95 approval-to-completion latency. All 3,000 workflows
+completed successfully with no retries or dead letters.
 
-The system completed 500 full workflow lifecycles with 20 concurrent workers and zero failed transitions. The benchmark covers persistence, approval-state transition, and audit-log writes rather than a single endpoint.
+| concurrency | workflows per run | successful across runs | error rate | median workflows/sec | worst p95 approval-to-completion | retries | dead-letter count |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 200 | 600 | 0.00% | 3.40 | 307.22 ms | 0 | 0 |
+| 5 | 200 | 600 | 0.00% | 8.87 | 609.52 ms | 0 | 0 |
+| 10 | 200 | 600 | 0.00% | 10.53 | 807.07 ms | 0 | 0 |
+| 20 | 200 | 600 | 0.00% | 10.91 | 1,024.26 ms | 0 | 0 |
+| 40 | 200 | 600 | 0.00% | 11.19 | 2,268.94 ms | 0 | 0 |
+
+## Deterministic failure verification
+
+Ten failing workflows were submitted concurrently:
+
+```bash
+docker compose run --rm app python scripts/benchmark_api.py \
+  --base-url http://app:8000 --count 10 --concurrency 10 \
+  --simulate-failure-every 1
+```
+
+Measured result: 20 retries and 10 dead-lettered jobs. Direct PostgreSQL checks
+of that 10-job cohort confirmed:
+
+- every job had `attempt_count = 3` and three `ATTEMPT_STARTED` events;
+- all 10 jobs reached `DEAD_LETTERED`, each with one dead-letter event;
+- no job reached `COMPLETED` and the cohort produced zero execution results;
+- the complete `execution_results` table contained zero duplicated idempotency
+  keys.
+
+These are local-machine measurements, not production capacity claims.

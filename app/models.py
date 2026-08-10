@@ -10,7 +10,19 @@ this is the atomicity guarantee that makes the audit log trustworthy.
 from datetime import datetime, timezone
 import uuid
  
-from sqlalchemy import CHAR, JSON, Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    Boolean,
+    CHAR,
+    JSON,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import TypeDecorator
@@ -106,5 +118,62 @@ class AuditLog(Base):
  
     __table_args__ = (
         Index("idx_audit_workflow_id", "workflow_id"),
+    )
+
+
+class ExecutionJob(Base):
+    """Transactional outbox row created when a workflow is approved."""
+
+    __tablename__ = "execution_jobs"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    workflow_id = Column(GUID(), ForeignKey("workflows.id"), nullable=False)
+    idempotency_key = Column(String(255), nullable=False, unique=True)
+    status = Column(String(20), nullable=False, default="PENDING")
+    attempt_count = Column(Integer, nullable=False, default=0)
+    available_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # A short lease makes PROCESSING jobs recoverable after worker termination.
+    claim_token = Column(GUID(), nullable=True)
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    simulate_failure = Column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        Index("idx_execution_jobs_claim", "status", "available_at"),
+        Index("idx_execution_jobs_workflow", "workflow_id"),
+    )
+
+
+class ExecutionResult(Base):
+    """The harmless downstream effect, deduplicated by idempotency key."""
+
+    __tablename__ = "execution_results"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    job_id = Column(GUID(), ForeignKey("execution_jobs.id"), nullable=False, unique=True)
+    workflow_id = Column(GUID(), ForeignKey("workflows.id"), nullable=False)
+    idempotency_key = Column(String(255), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ExecutionEvent(Base):
+    """Append-only execution history for retries, completion, and dead letters."""
+
+    __tablename__ = "execution_events"
+
+    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    job_id = Column(GUID(), ForeignKey("execution_jobs.id"), nullable=False)
+    workflow_id = Column(GUID(), ForeignKey("workflows.id"), nullable=False)
+    event_type = Column(String(30), nullable=False)
+    attempt = Column(Integer, nullable=False)
+    detail = Column(Text, nullable=True)
+    timestamp = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("idx_execution_events_job", "job_id", "timestamp"),
+        UniqueConstraint("job_id", "event_type", "attempt", name="uq_execution_event_attempt"),
     )
  

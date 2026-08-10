@@ -1,4 +1,4 @@
-from prometheus_client import Counter
+from prometheus_client import Counter, Gauge
 
 workflow_created_total = Counter(
     "workflow_created_total",
@@ -27,4 +27,24 @@ ai_action_decision_checks_total = Counter(
     "ai_action_decision_checks_total",
     "Total AI action decision checks",
     ["decision"],
+)
+
+execution_jobs_completed_total = Counter(
+    "execution_jobs_completed_total",
+    "Total execution jobs completed",
+)
+
+execution_jobs_retried_total = Counter(
+    "execution_jobs_retried_total",
+    "Total execution job attempts scheduled for retry",
+)
+
+execution_jobs_dead_lettered_total = Counter(
+    "execution_jobs_dead_lettered_total",
+    "Total execution jobs moved to the dead letter state",
+)
+
+execution_job_queue_depth = Gauge(
+    "execution_job_queue_depth",
+    "Execution jobs waiting or eligible for recovery",
 )

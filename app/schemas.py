@@ -20,6 +20,7 @@ class WorkflowCreate(BaseModel):
 class TransitionRequest(BaseModel):
     actor_id: str = Field(..., min_length=1)
     reason: Optional[str] = None
+    simulate_failure: bool = False
 
 
 class AIActionType(str, Enum):
@@ -96,3 +97,17 @@ class WorkflowDetail(WorkflowResponse):
     """Full detail view — includes audit history."""
     audit_entries: list[AuditEntry] = []
     ai_action: Optional[AIActionResponse] = None
+
+
+class ExecutionJobResponse(BaseModel):
+    id: uuid.UUID
+    workflow_id: uuid.UUID
+    idempotency_key: str
+    status: str
+    attempt_count: int
+    available_at: datetime
+    last_error: Optional[str]
+    created_at: datetime
+    completed_at: Optional[datetime]
+
+    model_config = {"from_attributes": True}

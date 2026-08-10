@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
  
 from app import service
 from app.database import get_db
-from app.schemas import TransitionRequest, WorkflowCreate, WorkflowDetail, WorkflowResponse
+from app.schemas import (
+    ExecutionJobResponse,
+    TransitionRequest,
+    WorkflowCreate,
+    WorkflowDetail,
+    WorkflowResponse,
+)
  
 router = APIRouter(prefix="/workflows", tags=["workflows"])
  
@@ -52,6 +58,14 @@ def reject_workflow(
     workflow_id: uuid.UUID, payload: TransitionRequest, db: Session = Depends(get_db)
 ):
     return _transition(db, workflow_id, "reject", payload)
+
+
+@router.get("/{workflow_id}/execution-job", response_model=ExecutionJobResponse)
+def get_execution_job(workflow_id: uuid.UUID, db: Session = Depends(get_db)):
+    job = service.get_execution_job(db, workflow_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Execution job not found")
+    return job
  
  
 # ── Internal ──────────────────────────────────────────────────────────────────
@@ -61,6 +75,7 @@ def _transition(db, workflow_id, action, payload):
         return service.transition_workflow(
             db, workflow_id=workflow_id, action=action,
             actor_id=payload.actor_id, reason=payload.reason,
+            simulate_failure=payload.simulate_failure,
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))

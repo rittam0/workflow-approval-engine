@@ -24,6 +24,30 @@
       "targets": [{ "expr": "workflow_invalid_transition_total", "refId": "A" }]
     },
     {
+      "type": "stat",
+      "title": "Jobs Completed",
+      "gridPos": { "x": 0, "y": 18, "w": 6, "h": 4 },
+      "targets": [{ "expr": "execution_jobs_completed_total{job=\"workflow-execution-worker\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Jobs Retried",
+      "gridPos": { "x": 6, "y": 18, "w": 6, "h": 4 },
+      "targets": [{ "expr": "execution_jobs_retried_total{job=\"workflow-execution-worker\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Jobs Dead-lettered",
+      "gridPos": { "x": 12, "y": 18, "w": 6, "h": 4 },
+      "targets": [{ "expr": "execution_jobs_dead_lettered_total{job=\"workflow-execution-worker\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Execution Queue Depth",
+      "gridPos": { "x": 18, "y": 18, "w": 6, "h": 4 },
+      "targets": [{ "expr": "execution_job_queue_depth{job=\"workflow-execution-worker\"}", "refId": "A" }]
+    },
+    {
       "type": "timeseries",
       "title": "HTTP Request Rate",
       "gridPos": { "x": 0, "y": 4, "w": 12, "h": 7 },
