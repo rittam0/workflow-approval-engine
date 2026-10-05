@@ -45,9 +45,30 @@ Manual UI / API client
 The API locks a pending workflow and commits its approval state, audit entry,
 and `execution_jobs` row together. Workers claim due rows with PostgreSQL
 `FOR UPDATE SKIP LOCKED`. A lease recovers abandoned claims, while the unique
-idempotency key on `execution_results` prevents a successful effect from being
-recorded twice. Failed jobs retry after 1 and 2 seconds and become
-`DEAD_LETTERED` on the third failed attempt.
+idempotency key on `execution_results` prevents duplicate successful result
+records. Failed executions use exponential backoff (1 then 2 seconds by default)
+and become `DEAD_LETTERED` when a failure is recorded at attempt three or later.
+
+## Delivery and recovery
+
+Approval, audit and outbox insertion commit together: a rollback leaves no
+approved workflow without its job. Concurrent PostgreSQL workers skip rows
+locked by another worker. Claiming commits a token and a 30-second default
+lease; an expired claim becomes eligible again, with a new token. A stale
+worker cannot commit through an obsolete claim token. Execution holds the job
+row lock until its result and completion event commit.
+
+Execution attempts can repeat after failure or an abandoned lease. This is a
+retryable, at-least-once attempt model, not exactly-once external execution.
+If a downstream call succeeds but the worker dies before the database commit,
+the next worker can call it again. The downstream service must honor the same
+idempotency key to deduplicate that side effect. The included executor only
+records a harmless database result (or raises a deterministic failure).
+
+The retry limit is checked when recording an execution failure; repeated
+crashes before failure recording can cause more than three claims. There is
+no lease heartbeat, so a future long-running executor needs a lease policy
+and downstream idempotency appropriate to its duration.
 
 ## API
 
@@ -97,27 +118,34 @@ cd frontend && npm run lint && npm run build
 ```
 
 The focused backend tests cover transactional rollback, two-worker claiming,
-bounded retries/dead-lettering, once-only successful completion, and the
-existing AI-action decision guard.
+bounded failure retries/dead-lettering, lease recovery and stale-token rejection,
+unique successful result recording, and the
+existing AI-action decision guard. These CI tests use SQLite with serialized
+write locking; they do not establish PostgreSQL `SKIP LOCKED` behavior. The
+recorded Docker benchmark exercises the PostgreSQL lifecycle with one worker.
 
 ## Benchmark
 
 The benchmark measures create, approval, worker execution, and terminal job
-status at concurrency 1, 5, 10, 20, and 40:
+status at client concurrency 1, 5, 10, 20, and 40. The recorded local
+Docker/PostgreSQL/worker cohort ran 200 workflows per level, three runs per
+level: all 3,000 completed successfully. It is not a production capacity claim:
 
 ```bash
 python scripts/benchmark_api.py --base-url http://localhost:8000 --count 200
 ```
 
 Measured PostgreSQL/Docker results are recorded in
-[docs/benchmark.md](docs/benchmark.md). Runs create durable records.
+[docs/benchmark.md](docs/benchmark.md). A separate deterministic cohort forced
+failure for 10 workflows: 20 retries, 10 dead-lettered jobs, three attempts per
+job, and zero successful execution results. Runs create durable records.
 
 ## Observability
 
 Existing workflow, AI-action, and HTTP metrics are preserved. The worker
 exposes counters for completed, retried, and dead-lettered jobs plus a
 queue-depth gauge on its internal `:8001/metrics` endpoint; Prometheus scrapes
-both API and worker.
+both API and worker, and the Compose stack includes Grafana dashboards.
 
 ## Known limitations
 

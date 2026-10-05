@@ -130,3 +130,28 @@ def test_success_completes_once(sessions):
             .count()
             == 1
         )
+
+
+def test_expired_lease_reclaimed_and_stale_token_rejected(sessions):
+    from datetime import timedelta
+    from app.models import utcnow
+
+    workflow_id = approve(sessions)
+    with sessions() as db:
+        first = claim_next_job(db)
+    with sessions() as db:
+        assert claim_next_job(db) is None
+    with sessions() as db:
+        job = db.query(ExecutionJob).filter_by(workflow_id=workflow_id).one()
+        job.available_at = utcnow() - timedelta(seconds=1)
+        db.commit()
+    with sessions() as db:
+        second = claim_next_job(db)
+    assert second.id == first.id
+    assert second.claim_token != first.claim_token
+    with sessions() as db:
+        assert process_claimed_job(db, first) == "skipped"
+    with sessions() as db:
+        assert process_claimed_job(db, second) == "completed"
+        assert db.query(ExecutionResult).filter_by(workflow_id=workflow_id).count() == 1
+        assert db.query(ExecutionJob).filter_by(workflow_id=workflow_id).one().attempt_count == 2
