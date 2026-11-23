@@ -100,6 +100,43 @@ The focused backend tests cover transactional rollback, two-worker claiming,
 bounded retries/dead-lettering, once-only successful completion, and the
 existing AI-action decision guard.
 
+### PostgreSQL locking tests
+
+The main suite runs on SQLite, which has no row-level locks, so it cannot prove
+that `FOR UPDATE SKIP LOCKED` works. `tests/test_postgres.py` runs against real
+PostgreSQL (CI starts a PostgreSQL container for it):
+
+```bash
+TEST_POSTGRES_URL=postgresql://postgres:postgres@localhost:5432/workflows_test \
+  python -m pytest tests/test_postgres.py -v
+```
+
+- One worker holds a row lock; a second worker, given a 2-second lock timeout,
+  must claim a different job instead of waiting. With `skip_locked=False` this
+  test fails with `LockNotAvailable`, so it checks the real behaviour.
+- Eight workers race over 60 jobs; every job completes, with exactly one result
+  and one claim each.
+
+### Crash test
+
+`scripts/chaos_test.py` feeds 1,000 approved workflows to 3 workers over about
+two minutes while `SIGKILL`ing a random worker every 1.5 seconds, then audits
+the database:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/workflows \
+  python scripts/chaos_test.py
+```
+
+Measured run (PostgreSQL 16, local machine):
+
+| Worker kills | Jobs completed | Lost jobs | Duplicate results |
+| ---: | ---: | ---: | ---: |
+| 83 | 1,000/1,000 | 0 | 0 |
+
+Because the included executor finishes almost instantly, most kills land
+between jobs; a job caught mid-claim is reclaimed after its lease expires.
+
 ## Benchmark
 
 The benchmark measures create, approval, worker execution, and terminal job
